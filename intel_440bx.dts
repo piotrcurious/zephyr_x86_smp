@@ -1,0 +1,170 @@
+/*******************************************************************************
+ * intel_440bx.dts
+ *
+ * This is a placeholder device tree source (DTS) file for a generic
+ * motherboard based on the Intel 440BX chipset.
+ *
+ * This file is for illustrative purposes only and will require significant
+ * modification and reverse-engineering of your specific hardware to function.
+ * It is based on common conventions and a high-level understanding of the
+ * 440BX architecture, as found in Linux kernel sources and other documentation.
+ *
+ * To make this functional, you would need to determine the specific
+ * memory addresses, interrupt vectors, and configuration for your board.
+ ******************************************************************************/
+
+/dts-v1/;
+
+#include <dt-bindings/interrupt-controller/pic.h>
+#include <dt-bindings/interrupt-controller/acpi.h>
+#include <dt-bindings/pci/pci.h>
+
+/ {
+	model = "Generic Intel 440BX Motherboard";
+	compatible = "intel,440bx-board";
+
+	aliases {
+		// Define aliases for common devices
+		apic = &ioapic;
+		cpu0 = &cpu0;
+		cpu1 = &cpu1;
+		uart0 = &isa_uart0;
+		pci0 = &pci_bus0;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		// CPU 0 (Boot CPU)
+		cpu0: cpu@0 {
+			compatible = "intel,pentium-iii";
+			reg = <0>;
+			device_type = "cpu";
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			cpu-on-start;
+			interrupt-controller {
+				compatible = "intel,local-apic";
+				interrupt-controller;
+				#interrupt-cells = <1>;
+				reg = <0xfee00000 0x100>;
+			};
+		};
+
+		// CPU 1 (Symmetric Multi-Processing)
+		cpu1: cpu@1 {
+			compatible = "intel,pentium-iii";
+			reg = <1>;
+			device_type = "cpu";
+			status = "disabled"; // Zephyr will enable it on boot
+			#address-cells = <1>;
+			#size-cells = <0>;
+			interrupt-controller {
+				compatible = "intel,local-apic";
+				interrupt-controller;
+				#interrupt-cells = <1>;
+				reg = <0xfee00000 0x100>;
+			};
+		};
+
+		// ... add more CPUs if needed
+	};
+
+	chosen {
+		zephyr,smp-boot-cpus = <&cpu1>;
+		zephyr,console = &isa_uart0;
+		zephyr,sram = &sram0;
+	};
+
+	sram0: sram@a0000 {
+		compatible = "mmio-sram";
+		reg = <0x0a0000 0x200000>; // Example: 2MB of RAM at 0xA0000
+	};
+	
+	// Define the I/O APIC which handles interrupts from peripherals
+	ioapic: interrupt-controller@fec00000 {
+		compatible = "intel,io-apic";
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		reg = <0xfec00000 0x100>;
+		// In a real device tree, you'd define interrupt-map properties here
+		// to route specific interrupts to the IO-APIC. This is a complex part
+		// and is often a major challenge in legacy systems.
+	};
+
+	// The PCI Host bridge
+	pci_bus0: pci@0 {
+		compatible = "intel,440bx-pci-host";
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges = <0x02000000 0 0xc0000000 0xc0000000 0 0x40000000>;
+		bus-range = <0x00 0xff>;
+		reg = <0x0 0x0 0x0 0x0 0x0>;
+		interrupt-map-mask = <0xf800 0 0 0>;
+		interrupt-map = <0x0800 0 0 0 &ioapic 0 0>,
+				<0x0800 0 0 1 &ioapic 1 0>,
+				<0x0800 0 0 2 &ioapic 2 0>,
+				<0x0800 0 0 3 &ioapic 3 0>,
+				<0x0800 0 0 4 &ioapic 4 0>;
+		
+		// This is a simplified interrupt map. The actual mapping is hardware-specific.
+		// It would be a large list mapping each device/pin to a specific IO-APIC line.
+	};
+
+	// ISA bus for legacy peripherals
+	isa_bus: isa-bus {
+		compatible = "isa";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		// Standard 8250 UART for console output
+		isa_uart0: serial@3f8 {
+			compatible = "ns16550";
+			reg = <0x3f8 0x8>;
+			clocks = <&isa_bus_clock>;
+			current-speed = <115200>;
+			interrupts = <IRQ_ISA_UART>;
+			label = "UART_0";
+		};
+	};
+
+	// PIIX4 Southbridge on the PCI bus (device 7, function 0)
+	piix4: pci@7,0 {
+		compatible = "intel,piix4";
+		reg = <PCI_DEV(7,0)>;
+		status = "okay";
+	};
+};
+```
+/*******************************************************************************
+ * intel_440bx.conf
+ *
+ * This Kconfig file enables the necessary kernel and driver configurations
+ * for a Zephyr project targeting an x86 board with an Intel 440BX chipset.
+ ******************************************************************************/
+
+// This must be set to 'y' for any Zephyr application
+CONFIG_ARCH_X86=y
+
+// Enable symmetric multiprocessing (SMP)
+CONFIG_SMP=y
+CONFIG_MP_NUM_CPUS=2 // Set the number of CPUs available on the board
+
+// Architecture and Interrupt Controller Configuration
+CONFIG_X86_64=n // Assuming it's a 32-bit P3
+CONFIG_X86_32=y
+CONFIG_X86_SMP_APIC=y // Use the Advanced Programmable Interrupt Controller
+CONFIG_IOAPIC=y // Enable I/O APIC support
+CONFIG_HPET_TIMER=y // High-Precision Event Timer, if available
+CONFIG_PIC_IRQ_OFFSET=0 // Standard IRQ offset for legacy PIC
+
+// Peripheral Drivers
+CONFIG_PCIE=y // Enable PCI Express support
+CONFIG_PCI=y // Enable legacy PCI bus support
+CONFIG_NS16550=y // Enable the driver for the serial port
+CONFIG_SERIAL_INIT_PRIORITY=40 // Set priority for the serial port
+CONFIG_UART_CONSOLE=y // Use the serial port as the console
+CONFIG_UART_LINE_CTRL=y // Enable line control for the serial port
+CONFIG_UART_INTERRUPT_DRIVEN=y // Enable interrupt-driven serial I/O
